@@ -1,0 +1,18 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'maven-publish'
+
+group = 'expo.modules.notifprefs'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.notifprefs"
+  defaultConfig {
+    minSdkVersion 24
+  }
+  compileSdk 35
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+}

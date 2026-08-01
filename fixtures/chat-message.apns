@@ -1,0 +1,14 @@
+{
+  "Simulator Target Bundle": "com.demo.pusharch",
+  "aps": {
+    "alert": { "title": "Alice", "body": "hey, are you around?" },
+    "mutable-content": 1
+  },
+  "reason": "chat-message",
+  "convoId": "convo-123",
+  "convoKind": "direct",
+  "senderDisplayName": "Alice",
+  "senderHandle": "alice.demo.social",
+  "senderAvatarUrl": "https://i.pravatar.cc/300?img=5",
+  "messageKind": "message"
+}

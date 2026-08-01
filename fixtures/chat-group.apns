@@ -1,0 +1,16 @@
+{
+  "Simulator Target Bundle": "com.demo.pusharch",
+  "aps": {
+    "alert": { "title": "Carol", "body": "pushing the fix now" },
+    "mutable-content": 1
+  },
+  "reason": "chat-message",
+  "convoId": "convo-group-9",
+  "convoKind": "group",
+  "groupName": "Release Crew",
+  "groupMemberCount": 4,
+  "senderDisplayName": "Carol",
+  "senderHandle": "carol.demo.social",
+  "senderAvatarUrl": "https://i.pravatar.cc/300?img=9",
+  "messageKind": "message"
+}

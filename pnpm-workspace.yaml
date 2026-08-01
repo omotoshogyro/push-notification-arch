@@ -1,0 +1,4 @@
+# pnpm 11 reads linker configuration from here rather than .npmrc.
+# React Native's Metro resolver and Expo autolinking both expect a flat
+# node_modules, so the isolated (symlinked) default breaks native builds.
+nodeLinker: hoisted

@@ -1,0 +1,30 @@
+{
+  "name": "push-arch-demo",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild -p ios --clean",
+    "push": "node scripts/push.mjs",
+    "typecheck": "tsc --noEmit",
+    "android": "expo run:android",
+    "appgroup": "node scripts/appgroup.mjs",
+    "tap": "node scripts/tap.mjs"
+  },
+  "dependencies": {
+    "expo": "~54.0.35",
+    "expo-application": "~7.0.7",
+    "expo-notifications": "~0.32.17",
+    "expo-status-bar": "~3.0.8",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0"
+  },
+  "devDependencies": {
+    "@expo/plist": "^0.3.4",
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}

@@ -1,0 +1,9 @@
+{
+  "Simulator Target Bundle": "com.demo.pusharch",
+  "aps": {
+    "alert": { "title": "bob followed you", "body": "" },
+    "mutable-content": 1,
+    "sound": "default"
+  },
+  "reason": "follow"
+}

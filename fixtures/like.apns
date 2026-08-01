@@ -1,0 +1,9 @@
+{
+  "Simulator Target Bundle": "com.demo.pusharch",
+  "aps": {
+    "alert": { "title": "alice liked your post", "body": "\"the shadow cache is the good part\"" },
+    "mutable-content": 1,
+    "sound": "default"
+  },
+  "reason": "like"
+}
