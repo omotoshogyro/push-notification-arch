@@ -9,6 +9,12 @@ const {withSounds} = require('./withSounds')
 const {withXcodeTarget} = require('./withXcodeTarget')
 
 const CONTROLLER_NAME = 'NotificationService'
+// Compiled into BOTH the pod (simulateNsePush) and the extension. Single source
+// lives in the module; the plugin copies it into ios/<extension>/.
+const SHARED_SOURCE = {
+  from: ['modules', 'expo-notif-prefs', 'ios', 'NSEMutation.swift'],
+  name: 'NSEMutation.swift',
+}
 const SOUND_FILES = ['dm.aiff']
 
 /**
@@ -28,7 +34,11 @@ const withNotificationsExtension = config => {
     [withExtensionInfoPlist, {extensionName: EXTENSION_NAME}],
     [
       withExtensionSourceFiles,
-      {extensionName: EXTENSION_NAME, controllerName: CONTROLLER_NAME},
+      {
+        extensionName: EXTENSION_NAME,
+        controllerName: CONTROLLER_NAME,
+        sharedSource: SHARED_SOURCE,
+      },
     ],
     [withSounds, {extensionName: EXTENSION_NAME, soundFiles: SOUND_FILES}],
     [
@@ -36,7 +46,10 @@ const withNotificationsExtension = config => {
       {
         extensionName: EXTENSION_NAME,
         controllerName: CONTROLLER_NAME,
+        sharedSource: SHARED_SOURCE,
         soundFiles: SOUND_FILES,
+        // Optional: developmentTeam. Otherwise DEVELOPMENT_TEAM env or
+        // config.ios.appleTeamId; unset means ad-hoc signing.
       },
     ],
   ])

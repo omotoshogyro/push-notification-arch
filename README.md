@@ -48,11 +48,12 @@ plugins/notificationsExtension/       LAYER 1 — build time
   withXcodeTarget.js                    creates + wires the Xcode target
 
 modules/DemoNSE/                      LAYER 2 — the extension (separate process)
-  NotificationService.swift             badge, sound, INSendMessageIntent
+  NotificationService.swift             extension lifecycle only (once-only handler, expiry)
   Info.plist
 
 modules/expo-notif-prefs/             LAYER 3 — the App Group bridge
   ios/ExpoNotifPrefsModule.swift        UserDefaults(suiteName:) + the simulator stand-in
+  ios/NSEMutation.swift                 SHARED mutation logic: badge, sound, INSendMessageIntent, avatar fetch
   android/…/ExpoNotifPrefsModule.kt     parity stub — same JS API, SharedPreferences
   src/ExpoNotifPrefs.types.ts
 
@@ -60,13 +61,16 @@ src/notifications/                    LAYER 5 — JS
   registration.ts                       token + permissions, with the two defensive workarounds
   badge.ts                              the two-write reconciliation
   unread.tsx                            adaptive polling + the load-shedding heuristic
-  routing.ts                            payload -> screen, once-per-runtime guard
+  payload.ts                            runtime payload validation + payload -> screen (pure)
+  routing.ts                            expo-notifications glue, once-per-runtime guard
+  pollPolicy.ts                         load-shedding decision (pure)
   simulate.ts                           stand-in for APNs delivery (see Limitations)
 
 fixtures/*.apns                       payloads for `pnpm push`
 scripts/push.mjs                      xcrun simctl push wrapper
 scripts/appgroup.mjs                  dumps the shared App Group plist
 scripts/tap.mjs                       taps the simulator by device point
+scripts/check-drift.mjs               asserts Swift/Kotlin DEFAULTS and shared literals agree
 ```
 
 Layer 4 in social-app is a **load-bearing patch** to `expo-notifications` that
@@ -183,9 +187,11 @@ read-modify-written, so it is not.
 
 `createCommunicationNotification` in the NSE. Three non-obvious details:
 
-- The avatar fetch blocks a thread with a `DispatchSemaphore`. Normally
-  indefensible; here `contentHandler` must be called with finished content.
-  Bounded by a 5s timeout inside the extension's ~30s budget.
+- The avatar fetch is callback-based (no thread parked on a semaphore). It is
+  https-only with a public-looking host, capped at 2 MB, and has a hard 8s
+  overall deadline (not just an idle timeout), inside the extension's ~30s
+  budget. `contentHandler` is invoked through one lock-guarded `finish()` so the
+  normal path and `serviceExtensionTimeWillExpire` can never both call it.
 - Group chats need `metadata.recipientCount`. Without it iOS sees zero recipients,
   classifies the notification as `MessagingDirect`, and silently drops the group
   name.
@@ -213,9 +219,12 @@ To keep the extension's behaviour observable, `simulateNsePush` in
 App Group store, and the Debug tab's "Simulate a delivery" card drives it. Same
 reads, same writes, same serial queue — different process.
 
-**This means the extension's logic exists in two places.** That is exactly the
-duplication hazard called out below. `NotificationService.swift` is canonical;
-change it first, then mirror.
+The mutation logic is **not** duplicated any more: it lives once in
+`modules/expo-notif-prefs/ios/NSEMutation.swift`, which is compiled into the pod
+(for `simulateNsePush`) and copied into the extension target by the config
+plugin on every prebuild. `NotificationService.swift` only handles the
+extension lifecycle (once-only `contentHandler`, expiry). Edit
+`NSEMutation.swift` only; `pnpm check:drift` fails if a prebuilt copy is stale.
 
 **2. Android is a parity stub.** `ExpoNotifPrefsModule.kt` shows the same JS API
 over `SharedPreferences`, but the other half of Android's story — intercepting
@@ -223,10 +232,9 @@ over `SharedPreferences`, but the other half of Android's story — intercepting
 notification type — needs a patch to `expo-notifications` plus a Firebase project.
 social-app's patch is literally headed `## LOAD BEARING PATCH, DO NOT REMOVE`.
 
-**3. `DEFAULTS` is duplicated** between the Swift and Kotlin modules with nothing
-asserting they match. Inherited from social-app deliberately, because the hazard
-is part of the lesson: add a key to one and forget the other and you get a
-platform-specific bug that only appears when the app is dead.
+**3. `DEFAULTS` is duplicated** between the Swift and Kotlin modules (inherited
+from social-app). `pnpm check:drift` (run in CI) asserts the two maps match, and
+that the `APP_GROUP` literals agree with `constants.js`.
 
 **4. Communication Notifications may render plain.** They need
 `com.apple.developer.usernotifications.communication`. The simulated entitlements
@@ -234,11 +242,24 @@ do include it, but if it is not honored, `content.updating(from: intent)` throws
 and the `do`/`catch` degrades to a plain notification — the same fallback
 social-app ships.
 
-**5. No automated tests.** The interesting logic is Swift that only runs when the
-app is dead. Stating that plainly is more honest than a test suite that covers
-only the JS.
+**5. Tests cover the JS only.** `pnpm test` (node:test via tsx) covers payload
+validation/routing and the poll load-shedding policy. The Swift NSE logic only
+runs when the app is dead and has no automated tests; it is type-checked with
+`swiftc` against the iOS simulator SDK but never executed in CI.
+
+**6. Known follow-up: Expo SDK 54 is not the latest.** Upgrading the Expo major
+version was deliberately out of scope here.
 
 ---
+
+## Signing
+
+The extension target uses ad-hoc signing by default. To set a team, pass
+`DEVELOPMENT_TEAM=<id>` in the environment at prebuild, set `ios.appleTeamId` in
+the Expo config, or pass `developmentTeam` to the plugin. Swift version and
+deployment target come from `ios.deploymentTarget` / the main app target, with
+fallbacks in `constants.js`. Re-running prebuild without `--clean` updates the
+existing extension target rather than skipping it.
 
 ## Verified
 

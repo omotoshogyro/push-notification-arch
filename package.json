@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "android": "expo run:android",
     "appgroup": "node scripts/appgroup.mjs",
-    "tap": "node scripts/tap.mjs"
+    "tap": "node scripts/tap.mjs",
+    "test": "tsx --test tests/*.test.ts",
+    "check:drift": "node scripts/check-drift.mjs"
   },
   "dependencies": {
     "expo": "~54.0.35",
@@ -23,8 +25,11 @@
   },
   "devDependencies": {
     "@expo/plist": "^0.3.4",
+    "@types/node": "^26.6.6",
     "@types/react": "~19.1.0",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.2"
   },
+  "packageManager": "pnpm@11.22.0",
   "private": true
 }

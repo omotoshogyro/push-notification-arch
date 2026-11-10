@@ -2,3 +2,7 @@
 # React Native's Metro resolver and Expo autolinking both expect a flat
 # node_modules, so the isolated (symlinked) default breaks native builds.
 nodeLinker: hoisted
+
+# esbuild (via tsx) has a postinstall; pnpm 11 fails installs on unreviewed build scripts.
+allowBuilds:
+  esbuild: true

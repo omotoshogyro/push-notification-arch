@@ -18,8 +18,9 @@ import expo.modules.kotlin.modules.ModuleDefinition
  * See README "Known limitations".
  */
 
-// NOTE: duplicated from ios/ExpoNotifPrefsModule.swift with nothing asserting
-// they match. Same maintenance hazard social-app carries.
+// NOTE: duplicated from ios/ExpoNotifPrefsModule.swift. `pnpm check:drift`
+// (scripts/check-drift.mjs, run in CI) asserts the two maps match - keep the
+// one-entry-per-line `"key" to value,` format so the script can parse it.
 val DEFAULTS =
   mapOf<String, Any>(
     "playSoundChat" to true,
@@ -29,7 +30,11 @@ val DEFAULTS =
 class ExpoNotifPrefsModule : Module() {
   private fun prefs(context: Context?) =
     context?.getSharedPreferences("com.demo.pusharch", Context.MODE_PRIVATE)
-      ?: throw Error("Context is null")
+      ?: throw IllegalStateException(
+        "ExpoNotifPrefs: the React application context is not available. " +
+          "The module was called before the app context attached or after it was " +
+          "destroyed; retry after the app has started.",
+      )
 
   override fun definition() =
     ModuleDefinition {

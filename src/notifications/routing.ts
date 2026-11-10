@@ -1,29 +1,19 @@
 import * as Notifications from 'expo-notifications'
 
-export type Screen = 'Feed' | 'Notifications' | 'Chat' | 'Debug'
+import {
+  type NotificationPayload,
+  parseNotificationPayload,
+  payloadToScreen,
+  type Screen,
+} from './payload'
 
-export type NotificationPayload = {
-  reason?: string
-  convoId?: string
-  senderDisplayName?: string
-}
-
-/**
- * Maps a push payload to a destination. social-app routes via a URL and its own
- * regex router so that push taps, deep links, and web URLs all share one routing
- * table; this demo is small enough to map directly.
- */
-export function payloadToScreen(payload: NotificationPayload): Screen {
-  if (payload.reason === 'chat-message') return 'Chat'
-  return 'Notifications'
-}
+export {payloadToScreen, parseNotificationPayload}
+export type {NotificationPayload, Screen}
 
 export function getNotificationPayload(
   notification: Notifications.Notification,
 ): NotificationPayload | undefined {
-  const data = notification.request.content.data
-  if (!data) return undefined
-  return data as NotificationPayload
+  return parseNotificationPayload(notification.request.content.data)
 }
 
 /*

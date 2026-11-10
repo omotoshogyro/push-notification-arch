@@ -11,6 +11,7 @@ import {AppState} from 'react-native'
 
 import * as mockApi from '../mockApi'
 import {resetBadgeCount} from './badge'
+import {pollSkipReason} from './pollPolicy'
 
 const UPDATE_INTERVAL = 5 * 1e3 // 30s in social-app; shortened so the demo is watchable
 
@@ -21,6 +22,7 @@ export type PollOutcome =
   | 'skipped:30+'
   | 'skipped:background'
   | 'skipped:overlap'
+  | 'skipped:error'
 
 export type PollLogEntry = {
   at: number
@@ -62,7 +64,18 @@ const apiContext = createContext<ApiContext>({
   getCachedUnreadPage: () => undefined,
 })
 
-export function UnreadProvider({children}: React.PropsWithChildren<{}>) {
+export type UnreadProviderProps = React.PropsWithChildren<{
+  /** Poll period in ms. Injectable so tests need not wait 5s. */
+  pollIntervalMs?: number
+  /** Random source in [0, 1) for the load-shedding coin flip. */
+  random?: () => number
+}>
+
+export function UnreadProvider({
+  children,
+  pollIntervalMs = UPDATE_INTERVAL,
+  random = Math.random,
+}: UnreadProviderProps) {
   const [numUnread, setNumUnread] = useState('')
   const [pollLog, setPollLog] = useState<PollLogEntry[]>([])
   const [requestCount, setRequestCount] = useState(0)
@@ -101,19 +114,14 @@ export function UnreadProvider({children}: React.PropsWithChildren<{}>) {
          * already showing and n -> n+1 barely matters, so poll ~half as often.
          * At 30+ the badge displays "30+" and literally cannot change, so stop.
          *
-         * Math.random() rather than a deterministic every-other-tick because it
+         * An injectable random source (default Math.random) rather than a deterministic every-other-tick because it
          * also jitters clients apart instead of letting them stampede the server
          * on a shared interval.
          */
-        if (isPoll && unreadCount !== 0) {
-          if (unreadCount >= 30) {
-            log('skipped:30+', unreadCount)
-            return
-          }
-          if (Math.random() >= 0.5) {
-            log('skipped:coinflip', unreadCount)
-            return
-          }
+        const skip = pollSkipReason(unreadCount, !!isPoll, random)
+        if (skip) {
+          log(skip, unreadCount)
+          return
         }
 
         // Overlapping fetches would race to write cacheRef.
@@ -143,6 +151,11 @@ export function UnreadProvider({children}: React.PropsWithChildren<{}>) {
           setNumUnread(unreadStr)
           setRequestCount(mockApi.requestCount)
           if (isPoll) log('polled', unreadCount)
+        } catch (error) {
+          // Callers are often fire-and-forget (`void checkUnread()`); a
+          // rejection here would be an unhandled promise rejection.
+          console.warn('[notifications] checkUnread failed', error)
+          if (isPoll) log('skipped:error', unreadCount)
         } finally {
           isFetchingRef.current = false
         }
@@ -168,7 +181,7 @@ export function UnreadProvider({children}: React.PropsWithChildren<{}>) {
         }
       },
     }
-  }, [log])
+  }, [log, random])
 
   checkUnreadRef.current = api.checkUnread
 
@@ -176,10 +189,10 @@ export function UnreadProvider({children}: React.PropsWithChildren<{}>) {
     void checkUnreadRef.current?.()
     const interval = setInterval(
       () => void checkUnreadRef.current?.({isPoll: true}),
-      UPDATE_INTERVAL,
+      pollIntervalMs,
     )
     return () => clearInterval(interval)
-  }, [])
+  }, [pollIntervalMs])
 
   const state = useMemo(
     () => ({numUnread, pollLog, requestCount}),

@@ -15,8 +15,9 @@ let APP_GROUP = "group.com.demo.pusharch"
  * app may never have launched in this state, and a nil read there would silently
  * mean "sound off" rather than the intended default.
  *
- * NOTE: this map is duplicated in the Android module. Nothing asserts they
- * match - the same maintenance hazard social-app carries. See README.
+ * NOTE: this map is duplicated in the Android module. `pnpm check:drift`
+ * (scripts/check-drift.mjs, run in CI) asserts they match. Keep one
+ * `"key": value,` entry per line so the script can parse it.
  */
 let DEFAULTS: [String: Any] = [
   "playSoundChat": true,
@@ -88,9 +89,9 @@ public class ExpoNotifPrefsModule: Module {
      * runs the same logic in-process against the same App Group store so the
      * cross-process coordination is still observable on a simulator.
      *
-     * It is a DUPLICATE of the extension's logic, which is exactly the hazard
-     * flagged in the README. NotificationService.swift is the canonical copy;
-     * change it first, then mirror here.
+     * The mutation itself is NOT duplicated: both this function and the
+     * extension call `NSEMutation` (NSEMutation.swift, a single source file
+     * compiled into both targets), so they cannot diverge.
      */
     /*
      * `userInfo` arrives as a JSON string rather than a dictionary: Expo's Swift
@@ -109,118 +110,30 @@ public class ExpoNotifPrefsModule: Module {
       content.userInfo = userInfo.merging(["reason": reason]) { _, new in new }
 
       var badgeAfter = userDefaults?.integer(forKey: "badgeCount") ?? 0
-
-      if reason == "chat-message" {
-        // Mirrors `mutateWithChatSound`.
-        if userDefaults?.bool(forKey: "playSoundChat") == true {
-          content.sound = UNNotificationSound(
-            named: UNNotificationSoundName(rawValue: "dm.aiff")
-          )
-        } else {
-          content.sound = nil
-        }
-        // Mirrors `mutateWithGroupSubtitle`.
-        if userInfo["convoKind"] as? String == "group",
-          let groupName = userInfo["groupName"] as? String,
-          !groupName.isEmpty {
-          content.subtitle = groupName
-        }
-      } else {
-        // Mirrors `mutateWithBadge`, including the serial queue.
-        NSEPrefs.shared.queue.sync {
-          var count = userDefaults?.integer(forKey: "badgeCount") ?? 0
-          count += 1
-          content.badge = NSNumber(value: count)
-          userDefaults?.setValue(count, forKey: "badgeCount")
-          badgeAfter = count
-        }
+      let info = userInfo as [AnyHashable: Any]
+      if let newBadge = NSEMutation.mutate(
+        content, reason: reason, userInfo: info, prefs: userDefaults)
+      {
+        badgeAfter = newBadge
       }
 
-      var finalContent: UNNotificationContent = content
-      if reason == "chat-message" {
-        finalContent = Self.communicationContent(from: content, userInfo: userInfo)
+      // Same non-blocking avatar pipeline as the extension; the request is
+      // scheduled when it completes, so the JS call returns immediately.
+      let delay = delaySeconds
+      NSEMutation.finalize(content, reason: reason, userInfo: info) { finalContent in
+        let trigger =
+          delay > 0
+          ? UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+          : nil
+        let request = UNNotificationRequest(
+          identifier: UUID().uuidString,
+          content: finalContent,
+          trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request)
       }
-
-      let trigger =
-        delaySeconds > 0
-        ? UNTimeIntervalNotificationTrigger(timeInterval: delaySeconds, repeats: false)
-        : nil
-      let request = UNNotificationRequest(
-        identifier: UUID().uuidString,
-        content: finalContent,
-        trigger: trigger
-      )
-      UNUserNotificationCenter.current().add(request)
 
       return badgeAfter
     }
   }
-
-  /// Mirrors `createCommunicationNotification` in the extension.
-  static func communicationContent(
-    from content: UNMutableNotificationContent,
-    userInfo: [String: Any]
-  ) -> UNNotificationContent {
-    let senderDisplayName = userInfo["senderDisplayName"] as? String ?? "Unknown"
-    let isGroup = userInfo["convoKind"] as? String == "group"
-
-    var avatarImage: INImage?
-    if let urlString = userInfo["senderAvatarUrl"] as? String,
-      let url = URL(string: urlString),
-      let data = try? Data(contentsOf: url) {
-      avatarImage = INImage(imageData: data)
-    }
-
-    let sender = INPerson(
-      personHandle: INPersonHandle(value: userInfo["senderHandle"] as? String, type: .unknown),
-      nameComponents: nil,
-      displayName: senderDisplayName,
-      image: avatarImage,
-      contactIdentifier: nil,
-      customIdentifier: nil
-    )
-
-    var speakableGroupName: INSpeakableString?
-    if isGroup, let groupName = userInfo["groupName"] as? String, !groupName.isEmpty {
-      speakableGroupName = INSpeakableString(spokenPhrase: groupName)
-    }
-
-    let intent = INSendMessageIntent(
-      recipients: nil,
-      outgoingMessageType: .outgoingMessageText,
-      content: content.body,
-      speakableGroupName: speakableGroupName,
-      conversationIdentifier: userInfo["convoId"] as? String,
-      serviceName: nil,
-      sender: sender,
-      attachments: nil
-    )
-
-    // Without recipientCount iOS classifies a group as MessagingDirect and
-    // drops the group name entirely.
-    if isGroup, let memberCount = userInfo["groupMemberCount"] as? Int, memberCount > 0 {
-      let metadata = INSendMessageIntentDonationMetadata()
-      metadata.recipientCount = memberCount
-      intent.donationMetadata = metadata
-    }
-    if isGroup, let avatarImage {
-      intent.setImage(avatarImage, forParameterNamed: \.speakableGroupName)
-    }
-
-    let interaction = INInteraction(intent: intent, response: nil)
-    interaction.direction = .incoming
-    interaction.donate(completion: nil)
-
-    do {
-      return try content.updating(from: intent)
-    } catch {
-      return content
-    }
-  }
-}
-
-/// Shared serial queue, mirroring `NSEUtil` in the extension.
-private class NSEPrefs {
-  static let shared = NSEPrefs()
-  let queue = DispatchQueue(label: "NSEPrefsQueue")
 }

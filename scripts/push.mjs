@@ -2,11 +2,12 @@
 /*
  * Sends a fixture to the booted simulator via `xcrun simctl push`.
  *
- * This bypasses APNs entirely, which is what makes the whole demo runnable with
- * no Apple Developer account, no device, and no server. The notification service
- * extension still runs exactly as it would in production, because the OS
- * invokes it based on `mutable-content: 1` in the payload regardless of how the
- * push got here.
+ * This bypasses APNs entirely, which is what makes the demo runnable with no
+ * Apple Developer account, no device, and no server. It also means the
+ * notification service extension does NOT run: simctl injects the notification
+ * straight into the notification center. Use this for delivery, presentation
+ * and tap routing; the extension's logic is exercised in-process via
+ * `simulateNsePush` (Debug tab). See README "Known limitations".
  */
 import {execFileSync} from 'node:child_process'
 import {existsSync, readdirSync, readFileSync} from 'node:fs'
@@ -39,10 +40,11 @@ if (!bundleId) {
   process.exit(1)
 }
 
-// Without this the OS displays the payload as-is and the extension never runs.
+// Required for the NSE on a real APNs push (it is ignored by simctl, which
+// never invokes the extension), so still worth keeping fixtures honest.
 if (payload.aps?.['mutable-content'] !== 1) {
   console.warn(
-    `warning: ${name}.apns has no "mutable-content": 1 — the NSE will NOT be invoked`,
+    `warning: ${name}.apns has no "mutable-content": 1 — a real APNs push would not invoke the NSE`,
   )
 }
 
